@@ -45,7 +45,7 @@ logger.info(f"\n{pprint.pformat(vars(config), indent=4)}")
 with open(os.path.join(output_dir, "config.json"), 'w') as fp:
     json.dump(vars(config), fp, indent=4)
     
-def load_data(src_file, tgt_file):
+def load_data(src_file, tgt_file, config):
     with open(src_file) as fp:
         src_lines = fp.readlines()
     src_lines = [l.strip() for l in src_lines]
@@ -54,17 +54,22 @@ def load_data(src_file, tgt_file):
     tgt_lines = [l.strip() for l in tgt_lines]
     assert len(src_lines) == len(tgt_lines)
     n_data = len(src_lines)
-    logger.info(f"Load {n_data} instances from {src_file} and {tgt_file}")
     
-#     from transformers import BartTokenizer
-#     tokenizer = BartTokenizer.from_pretrained(config.pretrained_model, cache_dir=config.cache_dir)
-#     max_src_len, max_tgt_len = 0, 0
-#     for src_line, tgt_line in tqdm(zip(src_lines, tgt_lines), total=n_data, ncols=100):
-#         src_input_len = len(tokenizer(src_line)["input_ids"])
-#         tgt_input_len = len(tokenizer(tgt_line)["input_ids"])
-#         max_src_len = max(max_src_len, src_input_len)
-#         max_tgt_len = max(max_tgt_len, tgt_input_len)
-#     print(f"max_src_len: {max_src_len}, max_tgt_len: {max_tgt_len}")
+    new_src_lines, new_tgt_lines = [], []
+    tokenizer = BartTokenizer.from_pretrained(config.pretrained_model, cache_dir=config.cache_dir)
+    for src_line, tgt_line in tqdm(zip(src_lines, tgt_lines), total=n_data, ncols=100):
+        src_len = len(tokenizer(src_line)["input_ids"])
+        tgt_len = len(tokenizer(tgt_line)["input_ids"])
+        
+        if src_len > config.max_src_len or tgt_len > config.max_tgt_len:
+            continue
+            
+        new_src_lines.append(src_line)
+        new_tgt_lines.append(tgt_line)
+    
+    n_new_data = len(new_src_lines)
+    logger.info(f"Load {n_new_data}/{n_data} instances from {src_file} and {tgt_file}")
+
     
     return src_lines, tgt_lines, n_data
     
@@ -97,11 +102,9 @@ def evaluate(epoch, model, eval_data, config, mode, show=True):
     
     return eval_scores, eval_outputs
             
-tokenizer = BartTokenizer.from_pretrained(config.pretrained_model, cache_dir=config.cache_dir)
-
-train_data = load_data(config.train_src_file, config.train_tgt_file)
-dev_data = load_data(config.dev_src_file, config.dev_tgt_file)
-test_data = load_data(config.test_src_file, config.test_tgt_file)
+train_data = load_data(config.train_src_file, config.train_tgt_file, config)
+dev_data = load_data(config.dev_src_file, config.dev_tgt_file, config)
+test_data = load_data(config.test_src_file, config.test_tgt_file, config)
 
 model = FinetuningBART(config)
 model.cuda(device=config.gpu_device)
